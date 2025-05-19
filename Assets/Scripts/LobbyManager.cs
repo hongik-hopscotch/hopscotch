@@ -4,96 +4,120 @@ using TMPro;
 using UnityEngine.SceneManagement;
 using System;
 using System.Collections;
+using UnityEngine.Rendering.Universal.Internal;
 
 
 public class LobbyManager : MonoBehaviour
 {
+    public Button createRoomButton;
+    public Button joinRoomButton;
+    // Join Room 시에 들어오는 input value
+    public TMP_InputField joinCodeInputField;
 
-    public TMP_InputField codeInput;
-    public Button joinButton;
-    public Button createButton;
-    // 에러 및 관련 text 생성기
-    public TextMeshProUGUI messageText;
-    // 생성된 자동 코드
-    public TextMeshProUGUI createdCodeText;
+    // debug.log results
+    public TextMeshProUGUI debugText;
 
-    private string currentCode;
-    private Coroutine expireCoroutine;
+    public TextMeshProUGUI countdownText;
+
+    // generate Room Code
+    public TextMeshProUGUI roomCodeText;
+
+    private string currentRoomCode;
+    private float roomLifetime = 180f;
+    private float timeRemaining;
+    private bool isRoomActive = false;
+
 
     void Start()
     {
-        joinButton.onClick.AddListener(OnJoinClicked);
-        createButton.onClick.AddListener(OnCreateClicked);
-        createdCodeText.text = "";
-        messageText.text = "";
+        createRoomButton.onClick.AddListener(OnCreateRoomButtonClick);
+        joinRoomButton.onClick.AddListener(OnJoinRoomButtonClick);
+
+        debugText.text = "Player entered";
+        countdownText.text = "";
+        roomCodeText.text = "";
+
+        // 처음에는 숨김
+        joinCodeInputField.gameObject.SetActive(false);
     }
 
-    void OnCreateClicked()
-    {
-        currentCode = System.Guid.NewGuid().ToString().Substring(0, 6).ToUpper();
 
-        if (RoomManager.CreateRoom(currentCode))
-        {
-            createdCodeText.text = $"Created code: {currentCode}";
-            messageText.text = "Enter in 3 Mins!";
-
-            if (expireCoroutine != null) StopCoroutine(expireCoroutine);
-            expireCoroutine = StartCoroutine(CodeExpireCountdown(currentCode));
-        }
-        else
-        {
-            messageText.text = "Try again";
-        }
-    }
-
-    void OnJoinClicked()
-    {
-        string inputCode = codeInput.text.Trim().ToUpper();
-
-        if (string.IsNullOrEmpty(inputCode))
-        {
-            messageText.text = "Enter the Code!";
-            return;
-        }
-
-        if (RoomManager.JoinRoom(inputCode))
-        {
-            messageText.text = "Game is loading...";
-            StartCoroutine(WaitAndStart(inputCode));
-        }
-        else
-        {
-            messageText.text = "Wrong or expired code";
-        }
-    }
-
-    IEnumerator WaitAndStart(string code)
-    {
-        yield return new WaitForSeconds(1f); // UI 확인용 잠깐 대기
-
-        if (RoomManager.IsRoomReady(code))
-        {
-            SceneManager.LoadScene("Intro"); // 인트로 화면으로 이동
-        }
-        else
-        {
-            messageText.text = "Player is not yet.";
-        }
-    }
-
-    IEnumerator CodeExpireCountdown(string code)
-    {
-        yield return new WaitForSeconds(180f);
-
-        if (code == currentCode)
-        {
-            createdCodeText.text = "Code has expired";
-        }
-    }
 
     // Update is called once per frame
     void Update()
     {
-        
+        if (isRoomActive)
+        {
+            timeRemaining -= Time.deltaTime;
+
+            if (timeRemaining > 0)
+            {
+                TimeSpan t = TimeSpan.FromSeconds(timeRemaining);
+                countdownText.text = $"Remaining time: {t.Minutes:D2}:{t.Seconds:D2}";
+            }
+            else
+            {
+                countdownText.text = "Room expired";
+                debugText.text = "The room code has expired";
+                isRoomActive = false;
+                currentRoomCode = null;
+            }
+        }
+    }
+
+    void OnCreateRoomButtonClick()
+    {
+        currentRoomCode = GenerateRoomCode();
+        debugText.text = $"Room code : {currentRoomCode} (3mins)";
+        roomCodeText.text = $"room code: {currentRoomCode}";
+
+        Debug.Log($"Room Created Code: {currentRoomCode}");
+        timeRemaining = roomLifetime;
+        isRoomActive = true;
+        joinCodeInputField.gameObject.SetActive(false);
+    }
+
+    void OnJoinRoomButtonClick()
+    {
+
+        // 입력창이 꺼져 있으면 염
+        if (!joinCodeInputField.gameObject.activeSelf)
+        {
+            joinCodeInputField.gameObject.SetActive(true);
+            debugText.text = "enter the code";
+            return;
+        }
+        string inputCode = joinCodeInputField.text.ToUpper().Trim();
+
+        if (string.IsNullOrEmpty(inputCode))
+        {
+            debugText.text = "Enter code";
+            return;
+        }
+
+        if (inputCode == currentRoomCode && isRoomActive)
+        {
+            debugText.text = $"{inputCode} game start";
+            Debug.Log("Join Success");
+        }
+        else
+        {
+            debugText.text = "code not correct";
+            Debug.Log("Join Failed");
+        }
+
+
+    }
+
+    string GenerateRoomCode()
+    {
+        const string chars = "QWERTYUIOPASDFGHJKLZXCVBNM0987654321";
+        System.Random rand = new System.Random();
+        char[] code = new char[6];
+        for (int i = 0; i < code.Length; i++)
+        {
+            code[i] = chars[rand.Next(chars.Length)];
+        }
+        return new string(code);
     }
 }
