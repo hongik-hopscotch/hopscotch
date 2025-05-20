@@ -1,3 +1,7 @@
+
+
+
+
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -6,8 +10,11 @@ using System;
 using System.Collections;
 using UnityEngine.Rendering.Universal.Internal;
 
+using Photon.Pun;
+using Photon.Realtime;
 
-public class LobbyManager : MonoBehaviour
+
+public class LobbyManager : MonoBehaviourPunCallbacks
 {
     public Button createRoomButton;
     public Button joinRoomButton;
@@ -39,6 +46,11 @@ public class LobbyManager : MonoBehaviour
 
         // 처음에는 숨김
         joinCodeInputField.gameObject.SetActive(false);
+
+
+        // Photon 멀티서버 연결 - App ID 기반 자동 연결
+        createRoomButton.interactable = false;
+        PhotonNetwork.ConnectUsingSettings();
     }
 
 
@@ -67,6 +79,14 @@ public class LobbyManager : MonoBehaviour
 
     void OnCreateRoomButtonClick()
     {
+        // Photon 서버에 이미 접속해 있는 경우 서버 생성 막기
+        if (PhotonNetwork.InRoom)
+    {
+            debugText.text = "Already connecting to the server.";
+        Debug.Log("Already connecting to the server.");
+        return;
+    }
+
         currentRoomCode = GenerateRoomCode();
         debugText.text = $"Room code : {currentRoomCode} (3mins)";
         roomCodeText.text = $"room code: {currentRoomCode}";
@@ -75,6 +95,14 @@ public class LobbyManager : MonoBehaviour
         timeRemaining = roomLifetime;
         isRoomActive = true;
         joinCodeInputField.gameObject.SetActive(false);
+
+
+        // Photon 멀티 서버 생성
+        RoomOptions options = new RoomOptions { MaxPlayers = 2 };
+        PhotonNetwork.CreateRoom(currentRoomCode, options);
+        Debug.Log("Create a Server");
+
+
     }
 
     void OnJoinRoomButtonClick()
@@ -106,6 +134,16 @@ public class LobbyManager : MonoBehaviour
             Debug.Log("Join Failed");
         }
 
+                if (PhotonNetwork.InRoom)
+    {
+        debugText.text = "이미 방에 입장 중입니다. 나간 뒤 다시 시도하세요.";
+        Debug.Log("⚠️ 이미 방 안에 있음. 방 생성 차단.");
+        return;
+    }
+
+        // Photon 멀티 서버에 참여 
+        PhotonNetwork.JoinRoom(inputCode);
+        debugText.text = $"Trying to join {inputCode}";
 
     }
 
@@ -120,4 +158,36 @@ public class LobbyManager : MonoBehaviour
         }
         return new string(code);
     }
+
+    // 콜백함수
+    public override void OnConnectedToMaster()
+    {
+        debugText.text = "Connected to Master. Joining lobby...";
+        PhotonNetwork.JoinLobby();
+    }
+
+    public override void OnJoinedLobby()
+    {
+        debugText.text = "Lobby joined. You can now create or join rooms.";
+        createRoomButton.interactable = true;
+    }
+
+    public override void OnCreateRoomFailed(short returnCode, string message)
+    {
+        debugText.text = $" Room creation failed: {message}";
+    }
+
+    public override void OnJoinedRoom()
+    {
+        debugText.text = $" Joined room: {PhotonNetwork.CurrentRoom.Name}";
+        // 예: 게임 씬으로 전환하고 싶다면 여기서 SceneManager.LoadScene() 호출 가능
+        // SceneManager.LoadScene("GameScene");
+    }
+
+    public override void OnJoinRoomFailed(short returnCode, string message)
+    {
+        debugText.text = $" Failed to join room: {message}";
+    }
+    
 }
+
