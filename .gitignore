@@ -1,17 +1,23 @@
-[Libraries]
-[Libraries/AssetDatabase3]
-[Libraries/Bee]
-[Libraries/ScriptAssemblies]
+# Unity generated folders
+Library/
 Temp/
 Obj/
 Build/
-Library/
 Logs/
-MemoryCaptures/
 UserSettings/
-.vscode/
+MemoryCaptures/
+
+# Visual Studio
 *.csproj
-*.sln
-*.user
 *.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+.vscode/
+.idea/
+
+# OS
 .DS_Store
+Thumbs.db
