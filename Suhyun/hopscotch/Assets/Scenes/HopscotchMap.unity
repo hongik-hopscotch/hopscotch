@@ -1024,7 +1024,7 @@ MonoBehaviour:
   language: ko
   needRedraw: 0
   notInteractUnderGUI: 1
-  mapType: google.terrain
+  mapType: osm.mapnik
   osmServer: 0
   redrawOnPlay: 1
   renderInThread: 1
@@ -1037,7 +1037,7 @@ MonoBehaviour:
   traffic: 0
   trafficProviderID: googlemaps
   useSoftwareJPEGDecoder: 0
-  _activeTypeSettings: 06Region1412KR
+  _activeTypeSettings: 
   _view:
     _countTilesX: 8
     _countTilesY: 8

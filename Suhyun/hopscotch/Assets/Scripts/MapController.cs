@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections;
 using OnlineMaps;
+using System.Collections.Generic;
 
 public class MapController : MonoBehaviour
 {
@@ -20,12 +21,16 @@ public class MapController : MonoBehaviour
         // real
         StartCoroutine(GetLocation());
         //
-        
+
         Input.compass.enabled = true;
         myMarker = Marker2DManager.CreateItem(myLocation);
         myMarker.texture = Resources.Load<Texture2D>("MarkerBlue");
 
         StartCoroutine(MapInit());
+
+        DrawColor(Buildings.C.GetOutline(), Color.red, 0.5f);
+        DrawColor(Buildings.R.GetOutline(), Color.green, 0.5f);
+        DrawColor(Buildings.T.GetOutline(), Color.blue, 0.5f);
     }
 
     // Update is called once per frame
@@ -100,6 +105,11 @@ public class MapController : MonoBehaviour
         }
     }
 
+    void DrawColor(List<GeoPoint> outline, Color color, float alpha)
+    {
+        Polygon polygon = new Polygon(outline, color, 5, new Color(color.r, color.g, color.b, alpha));
+        map.drawingElementManager.Add(polygon);
+    }
     public void MoveToMyLocation()
     {
         map.location = myLocation;
