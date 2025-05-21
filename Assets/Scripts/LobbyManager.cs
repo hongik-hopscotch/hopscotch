@@ -1,7 +1,3 @@
-
-
-
-
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -16,8 +12,13 @@ using Photon.Realtime;
 
 public class LobbyManager : MonoBehaviourPunCallbacks
 {
+    private static LobbyManager instance; // 중복 방지
+
+
     public Button createRoomButton;
     public Button joinRoomButton;
+    public Button exitRoomButton;
+
     // Join Room 시에 들어오는 input value
     public TMP_InputField joinCodeInputField;
 
@@ -30,15 +31,20 @@ public class LobbyManager : MonoBehaviourPunCallbacks
     public TextMeshProUGUI roomCodeText;
 
     private string currentRoomCode;
-    private float roomLifetime = 180f;
-    private float timeRemaining;
+
     private bool isRoomActive = false;
+
+    private float roomLifetime = 180f;  // 3분
+    private float timeRemaining;
+    private bool isCountdownRunning = false;
 
 
     void Start()
     {
+
         createRoomButton.onClick.AddListener(OnCreateRoomButtonClick);
         joinRoomButton.onClick.AddListener(OnJoinRoomButtonClick);
+        exitRoomButton.onClick.AddListener(OnExitRoomButtonClick);
 
         debugText.text = "Player entered";
         countdownText.text = "";
@@ -49,8 +55,10 @@ public class LobbyManager : MonoBehaviourPunCallbacks
 
 
         // Photon 멀티서버 연결 - App ID 기반 자동 연결
+        PhotonNetwork.AutomaticallySyncScene = true;
         createRoomButton.interactable = false;
         PhotonNetwork.ConnectUsingSettings();
+
     }
 
 
@@ -58,55 +66,82 @@ public class LobbyManager : MonoBehaviourPunCallbacks
     // Update is called once per frame
     void Update()
     {
-        if (isRoomActive)
+        if (isCountdownRunning && PhotonNetwork.IsMasterClient && PhotonNetwork.InRoom && PhotonNetwork.CurrentRoom.PlayerCount == 1)
         {
             timeRemaining -= Time.deltaTime;
+            countdownText.text = $"waiting... {Mathf.CeilToInt(timeRemaining)}";
 
-            if (timeRemaining > 0)
+            if (timeRemaining <= 0f)
             {
-                TimeSpan t = TimeSpan.FromSeconds(timeRemaining);
-                countdownText.text = $"Remaining time: {t.Minutes:D2}:{t.Seconds:D2}";
-            }
-            else
-            {
-                countdownText.text = "Room expired";
-                debugText.text = "The room code has expired";
-                isRoomActive = false;
-                currentRoomCode = null;
+                countdownText.text = "expired";
+                debugText.text = "expired - termination.";
+
+                isCountdownRunning = false;
+
+                PhotonNetwork.LeaveRoom();
             }
         }
     }
 
+
+
+
     void OnCreateRoomButtonClick()
     {
+
+        if (!PhotonNetwork.IsConnectedAndReady)
+        {
+            debugText.text = "server waiting...";
+            Debug.LogWarning("Tried to create room before ready.");
+            return;
+        }
+
         // Photon 서버에 이미 접속해 있는 경우 서버 생성 막기
         if (PhotonNetwork.InRoom)
-    {
+        {
             debugText.text = "Already connecting to the server.";
-        Debug.Log("Already connecting to the server.");
-        return;
-    }
+            Debug.Log("Already connecting to the server.");
+            return;
+        }
 
+        // RoomCode 생성 + 제한시간 설정 
         currentRoomCode = GenerateRoomCode();
-        debugText.text = $"Room code : {currentRoomCode} (3mins)";
-        roomCodeText.text = $"room code: {currentRoomCode}";
 
-        Debug.Log($"Room Created Code: {currentRoomCode}");
-        timeRemaining = roomLifetime;
+        debugText.text = $"Room code : {currentRoomCode} (3mins)";
+        roomCodeText.text = $"Room code: {currentRoomCode}";
+
+
+        RoomOptions options = new RoomOptions
+        {
+            MaxPlayers = 2
+        };
+
+
+        // 생성된 RoomCode 이용해 Photon 멀티 서버 생성
+        // 멀티 서버 생성 시 생성자는 자동으로 방(서버)에 입장됨, 경쟁 상대방만 코드 이용해 입장하면 됨
         isRoomActive = true;
         joinCodeInputField.gameObject.SetActive(false);
 
-
-        // Photon 멀티 서버 생성
-        RoomOptions options = new RoomOptions { MaxPlayers = 2 };
         PhotonNetwork.CreateRoom(currentRoomCode, options);
         Debug.Log("Create a Server");
+
+
+        isRoomActive = true;
+        isCountdownRunning = true;
+        timeRemaining = roomLifetime;
 
 
     }
 
     void OnJoinRoomButtonClick()
     {
+        // 방에 접속했지만 또 다른 방에 접속하는 경우 제한
+        if (PhotonNetwork.InRoom)
+        {
+            debugText.text = "You are already entering the room. Please leave and try again.";
+            Debug.Log("Already in the room. Block room creation.");
+            return;
+        }
 
         // 입력창이 꺼져 있으면 염
         if (!joinCodeInputField.gameObject.activeSelf)
@@ -123,9 +158,11 @@ public class LobbyManager : MonoBehaviourPunCallbacks
             return;
         }
 
+        // RoomCode가 생성되어 있고, 이미 방이 생성되어 있는 경우 Photon 멀티 서버에 참여 가능
         if (inputCode == currentRoomCode && isRoomActive)
         {
-            debugText.text = $"{inputCode} game start";
+            PhotonNetwork.JoinRoom(inputCode);
+            debugText.text = $"Trying to join {inputCode}";
             Debug.Log("Join Success");
         }
         else
@@ -133,19 +170,20 @@ public class LobbyManager : MonoBehaviourPunCallbacks
             debugText.text = "code not correct";
             Debug.Log("Join Failed");
         }
-
-                if (PhotonNetwork.InRoom)
+    }
+    void OnExitRoomButtonClick()
     {
-        debugText.text = "이미 방에 입장 중입니다. 나간 뒤 다시 시도하세요.";
-        Debug.Log("⚠️ 이미 방 안에 있음. 방 생성 차단.");
-        return;
+        if (PhotonNetwork.InRoom)
+        {
+            debugText.text = "leaving the room...";
+            PhotonNetwork.LeaveRoom();
+        }
+        else
+        {
+            debugText.text = "you are not in the room.";
+        }
     }
 
-        // Photon 멀티 서버에 참여 
-        PhotonNetwork.JoinRoom(inputCode);
-        debugText.text = $"Trying to join {inputCode}";
-
-    }
 
     string GenerateRoomCode()
     {
@@ -159,7 +197,8 @@ public class LobbyManager : MonoBehaviourPunCallbacks
         return new string(code);
     }
 
-    // 콜백함수
+
+    // 서버 접속 관련 콜백함수 - MonoBehaviourPunCallbacks 
     public override void OnConnectedToMaster()
     {
         debugText.text = "Connected to Master. Joining lobby...";
@@ -179,15 +218,41 @@ public class LobbyManager : MonoBehaviourPunCallbacks
 
     public override void OnJoinedRoom()
     {
+
         debugText.text = $" Joined room: {PhotonNetwork.CurrentRoom.Name}";
-        // 예: 게임 씬으로 전환하고 싶다면 여기서 SceneManager.LoadScene() 호출 가능
-        // SceneManager.LoadScene("GameScene");
     }
 
     public override void OnJoinRoomFailed(short returnCode, string message)
     {
         debugText.text = $" Failed to join room: {message}";
     }
-    
+    public override void OnPlayerEnteredRoom(Player newPlayer)
+    {
+        debugText.text = $"{newPlayer.NickName} enter!";
+
+        if (PhotonNetwork.CurrentRoom.PlayerCount == 2)
+        {
+            countdownText.text = "entered";
+            isCountdownRunning = false;
+
+            // 게임 시작 시 로직 추가 가능
+            // PhotonNetwork.LoadLevel("GameScene");
+        }
+    }
+
+    public override void OnLeftRoom()
+    {
+        debugText.text = "leave a room";
+        roomCodeText.text = "";
+        countdownText.text = "";
+        isRoomActive = false;
+        isCountdownRunning = false;
+
+        // 로비로 돌아가기
+        PhotonNetwork.JoinLobby();
+    }
+
+
 }
+
 
