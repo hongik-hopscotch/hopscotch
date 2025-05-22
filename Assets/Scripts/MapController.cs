@@ -244,45 +244,54 @@ public class MapController : MonoBehaviourPunCallbacks
     void InitializeAllBuildings()
     {
         // A동
-        InitializeBuilding(Buildings.A, Color.red);
+        InitializeBuilding(Buildings.A, Color.gray);
         // B동
-        InitializeBuilding(Buildings.B, Color.red);
+        InitializeBuilding(Buildings.B, Color.gray);
         // C동
-        InitializeBuilding(Buildings.C, Color.red);
+        InitializeBuilding(Buildings.C, Color.gray);
         // D동
-        InitializeBuilding(Buildings.D, Color.red);
+        InitializeBuilding(Buildings.D, Color.gray);
         // 제2기숙사
-        InitializeBuilding(Buildings.Dorm, Color.red);
+        InitializeBuilding(Buildings.Dorm, Color.gray);
         // E동
-        InitializeBuilding(Buildings.E, Color.red);
+        InitializeBuilding(Buildings.E, Color.gray);
         // 학생회관, 중앙도서관
-        InitializeBuilding(Buildings.GH, Color.red);
+        InitializeBuilding(Buildings.GH, Color.gray);
         // 과학관
-        InitializeBuilding(Buildings.I, Color.red);
+        InitializeBuilding(Buildings.I, Color.gray);
         // 제3공학관
-        InitializeBuilding(Buildings.J, Color.red);
+        InitializeBuilding(Buildings.J, Color.gray);
         // 제1공학관
-        InitializeBuilding(Buildings.K, Color.red);
+        InitializeBuilding(Buildings.K, Color.gray);
         // 제2공학관
-        InitializeBuilding(Buildings.P, Color.red);
+        InitializeBuilding(Buildings.P, Color.gray);
         // 정보통신센터
-        InitializeBuilding(Buildings.Q, Color.red);
+        InitializeBuilding(Buildings.Q, Color.gray);
         // 홍문관
-        InitializeBuilding(Buildings.R, Color.red);
+        InitializeBuilding(Buildings.R, Color.gray);
         // 강당
-        InitializeBuilding(Buildings.S, Color.red);
+        InitializeBuilding(Buildings.S, Color.gray);
         // 제4공학관
-        InitializeBuilding(Buildings.T, Color.red);
+        InitializeBuilding(Buildings.T, Color.gray);
         // 미술종합강의동
-        InitializeBuilding(Buildings.U, Color.red);
+        InitializeBuilding(Buildings.U, Color.gray);
         // 제1강의동
-        InitializeBuilding(Buildings.Z1, Color.red);
+        InitializeBuilding(Buildings.Z1, Color.gray);
         // 이천득관
-        InitializeBuilding(Buildings.Z2, Color.red);
+        InitializeBuilding(Buildings.Z2, Color.gray);
         // 제3강의동
-        InitializeBuilding(Buildings.Z3, Color.red);
+        InitializeBuilding(Buildings.Z3, Color.gray);
         // 제4강의동
-        InitializeBuilding(Buildings.Z4, Color.red);
+        InitializeBuilding(Buildings.Z4, Color.gray);
+        // 체육관
+        InitializeBuilding(Buildings.M, Color.gray);
+        // 와우관
+        InitializeBuilding(Buildings.L, Color.gray);
+        // 미술학관
+        InitializeBuilding(Buildings.F, Color.gray);
+        // 문헌관
+        InitializeBuilding(Buildings.MH, Color.gray);
+
     }
 
     void InitializeBuilding(Building building, Color color)
@@ -368,14 +377,9 @@ public class MapController : MonoBehaviourPunCallbacks
 
     DrawingElement DrawColor(List<GeoPoint> outline, Color color, float alpha)
     {
-        color.a = alpha;
-        DrawingElement element = new DrawingElement();
-        element.points = outline;
-        element.color = color;
-        element.visible = true;
-        element.Fill = true;
-        map.drawingElementManager.Add(element);
-        return element;
+        Polygon polygon = new Polygon(outline, color, 5, new Color(color.r, color.g, color.b, alpha));
+        map.drawingElementManager.Add(polygon);
+        return polygon;
     }
     public void MoveToMyLocation()
     {
