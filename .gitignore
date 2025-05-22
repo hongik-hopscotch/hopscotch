@@ -17,6 +17,7 @@ MemoryCaptures/
 *.userprefs
 .vscode/
 .idea/
+.app
 
 # OS
 .DS_Store
