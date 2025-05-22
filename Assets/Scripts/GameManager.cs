@@ -50,7 +50,8 @@ public class GameManager : MonoBehaviour
             case GameState.Lobby:
                 break;
             case GameState.Loading:
-                SceneManager.LoadScene("LoadingScene");
+                // SceneManager.LoadScene("LoadingScene"); 
+                SceneManager.LoadScene("HopscotchMap"); // 테스트 용
                 break;
             case GameState.Playing:
                 SceneManager.LoadScene("PlayingScene");
@@ -66,6 +67,7 @@ public class GameManager : MonoBehaviour
     public void OnPlayButtonClicked()
     {
         SetGameState(GameState.Loading);
+        
     }
 
 
