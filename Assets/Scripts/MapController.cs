@@ -13,6 +13,7 @@ public class MapController : MonoBehaviourPunCallbacks
     [Header("Map Settings")]
     public Map map;
     private Marker2D myMarker;
+    private Dictionary<string, Marker2D> otherPlayerMarkers = new Dictionary<string, Marker2D>();
     public GeoPoint myLocation;
     
     [Header("Building Capture Settings")]
@@ -48,34 +49,12 @@ public class MapController : MonoBehaviourPunCallbacks
         InitializeAllBuildings();
 
         // UI 초기화
-        if (captureButton != null)
-        {
-            captureButton.gameObject.SetActive(false);
-            EventTrigger trigger = captureButton.gameObject.GetComponent<EventTrigger>();
-            if (trigger == null)
-            {
-                trigger = captureButton.gameObject.AddComponent<EventTrigger>();
-            }
+        InitializeUI();
 
-            EventTrigger.Entry entryDown = new EventTrigger.Entry();
-            entryDown.eventID = EventTriggerType.PointerDown;
-            entryDown.callback.AddListener((data) => { StartCapture(); });
-            trigger.triggers.Add(entryDown);
-
-            EventTrigger.Entry entryUp = new EventTrigger.Entry();
-            entryUp.eventID = EventTriggerType.PointerUp;
-            entryUp.callback.AddListener((data) => { StopCapture(); });
-            trigger.triggers.Add(entryUp);
-        }
-        
-        if (captureProgressBar != null)
+        // 위치 동기화 시작
+        if (PhotonNetwork.IsConnected)
         {
-            captureProgressBar.gameObject.SetActive(false);
-        }
-
-        if (buildingInfoText != null)
-        {
-            buildingInfoText.gameObject.SetActive(false);
+            StartCoroutine(SyncLocation());
         }
 
         // Photon 연결 확인
@@ -333,6 +312,14 @@ public class MapController : MonoBehaviourPunCallbacks
 
     IEnumerator GetLocation()
     {
+#if UNITY_EDITOR
+        // 에디터에서는 테스트 위치 사용 (홍익대학교 중앙도서관 위치)
+        myLocation = new GeoPoint(126.926285, 37.551571);
+        while (true)
+        {
+            yield return new WaitForSeconds(0.5f);
+        }
+#else
         while (true)
         {
             if (!Input.location.isEnabledByUser)
@@ -373,6 +360,7 @@ public class MapController : MonoBehaviourPunCallbacks
                 }
             }
         }
+#endif
     }
 
     DrawingElement DrawColor(List<GeoPoint> outline, Color color, float alpha)
@@ -384,5 +372,97 @@ public class MapController : MonoBehaviourPunCallbacks
     public void MoveToMyLocation()
     {
         map.location = myLocation;
+    }
+
+    void InitializeUI()
+    {
+        if (captureButton != null)
+        {
+            captureButton.gameObject.SetActive(false);
+            EventTrigger trigger = captureButton.gameObject.GetComponent<EventTrigger>();
+            if (trigger == null)
+            {
+                trigger = captureButton.gameObject.AddComponent<EventTrigger>();
+            }
+
+            EventTrigger.Entry entryDown = new EventTrigger.Entry();
+            entryDown.eventID = EventTriggerType.PointerDown;
+            entryDown.callback.AddListener((data) => { StartCapture(); });
+            trigger.triggers.Add(entryDown);
+
+            EventTrigger.Entry entryUp = new EventTrigger.Entry();
+            entryUp.eventID = EventTriggerType.PointerUp;
+            entryUp.callback.AddListener((data) => { StopCapture(); });
+            trigger.triggers.Add(entryUp);
+        }
+        
+        if (captureProgressBar != null)
+        {
+            captureProgressBar.gameObject.SetActive(false);
+        }
+
+        if (buildingInfoText != null)
+        {
+            buildingInfoText.gameObject.SetActive(false);
+        }
+    }
+
+    IEnumerator SyncLocation()
+    {
+        while (true)
+        {
+            if (PhotonNetwork.IsConnected)
+            {
+                photonView.RPC("UpdatePlayerLocation", RpcTarget.All, 
+                    PhotonNetwork.LocalPlayer.NickName,
+                    myLocation.longitude,
+                    myLocation.latitude);
+            }
+            yield return new WaitForSeconds(0.5f);
+        }
+    }
+
+    [PunRPC]
+    void UpdatePlayerLocation(string playerNickname, double longitude, double latitude)
+    {
+        if (playerNickname == PhotonNetwork.LocalPlayer.NickName)
+            return;
+
+        if (!otherPlayerMarkers.ContainsKey(playerNickname))
+        {
+            // 다른 플레이어의 마커 생성
+            Marker2D marker = Marker2DManager.CreateItem(new GeoPoint(longitude, latitude));
+            
+            // Sprite를 로드하고 Texture2D로 변환
+            Sprite markerSprite = Resources.Load<Sprite>("MarkerRed");
+            if (markerSprite != null)
+            {
+                marker.texture = markerSprite.texture;
+            }
+            else
+            {
+                Debug.LogError("MarkerRed 스프라이트를 찾을 수 없습니다!");
+            }
+            
+            otherPlayerMarkers[playerNickname] = marker;
+            Debug.Log($"새로운 플레이어 마커 생성: {playerNickname}");
+        }
+        else
+        {
+            // 기존 마커 위치 업데이트
+            otherPlayerMarkers[playerNickname].location = new GeoPoint(longitude, latitude);
+        }
+    }
+
+    public override void OnPlayerLeftRoom(Player otherPlayer)
+    {
+        // 플레이어가 나가면 마커 제거
+        if (otherPlayerMarkers.ContainsKey(otherPlayer.NickName))
+        {
+            Marker2D marker = otherPlayerMarkers[otherPlayer.NickName];
+            Marker2DManager.RemoveItem(marker);
+            otherPlayerMarkers.Remove(otherPlayer.NickName);
+            Debug.Log($"플레이어 마커 제거: {otherPlayer.NickName}");
+        }
     }
 }

@@ -9,9 +9,10 @@ using UnityEngine.Rendering.Universal.Internal;
 using Photon.Pun;
 using Photon.Realtime;
 
-
 public class LobbyManager : MonoBehaviourPunCallbacks
 {
+    public static LobbyManager Instance { get; private set; }
+
     public Button createRoomButton;
     public Button joinRoomButton;
     // public Button exitRoomButton;
@@ -35,6 +36,20 @@ public class LobbyManager : MonoBehaviourPunCallbacks
     // 입장 코드 검사
     private string lastTriedJoinCode = "";
 
+    private void Awake()
+    {
+        // 싱글톤 패턴 구현
+        if (Instance == null)
+        {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
+        else
+        {
+            Destroy(gameObject);
+            return;
+        }
+    }
 
     void Start()
     {
@@ -64,6 +79,8 @@ public class LobbyManager : MonoBehaviourPunCallbacks
             createRoomButton.onClick.RemoveListener(OnCreateRoomButtonClick);
         if (joinRoomButton != null)
             joinRoomButton.onClick.RemoveListener(OnJoinRoomButtonClick);
+        // if (exitRoomButton != null)
+        //     exitRoomButton.onClick.RemoveListener(OnExitRoomButtonClick);
     }
 
     void OnDestroy()
