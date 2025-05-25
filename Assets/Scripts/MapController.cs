@@ -28,6 +28,8 @@ public class MapController : MonoBehaviourPunCallbacks, IPunObservable
     [SerializeField] private Image captureProgressBar;
     [Tooltip("건물 이름 텍스트")]
     [SerializeField] private TextMeshProUGUI buildingInfoText;
+    [Tooltip("점령 점수 UI")]
+    [SerializeField] private BuildingScoreUI buildingScoreUI;
 
     private Building currentBuilding;
     private bool isCapturing;
@@ -305,6 +307,32 @@ public class MapController : MonoBehaviourPunCallbacks, IPunObservable
         }
         
         DrawBuilding(building, color);
+        UpdateBuildingScore();  // 건물 상태가 변경될 때마다 점수 업데이트
+    }
+
+    private void UpdateBuildingScore()
+    {
+        if (buildingScoreUI == null) return;
+
+        int myCount = 0;
+        int enemyCount = 0;
+
+        foreach (var building in buildingVisuals.Keys)
+        {
+            if (building.GetOwner() == BuildingOwner.Player)
+            {
+                if (building.GetOwnerNickname() == PhotonNetwork.LocalPlayer.NickName)
+                {
+                    myCount++;
+                }
+                else
+                {
+                    enemyCount++;
+                }
+            }
+        }
+
+        buildingScoreUI.UpdateScore(myCount, enemyCount);
     }
 
     void DrawBuilding(Building building, Color color)
