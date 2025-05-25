@@ -8,13 +8,16 @@ using Photon.Pun;
 using Photon.Realtime;
 using TMPro;
 
-public class MapController : MonoBehaviourPunCallbacks
+public class MapController : MonoBehaviourPunCallbacks, IPunObservable
 {
     [Header("Map Settings")]
     public Map map;
+    [SerializeField] private Camera mapCamera;
     private Marker2D myMarker;
     private Dictionary<string, Marker2D> otherPlayerMarkers = new Dictionary<string, Marker2D>();
     public GeoPoint myLocation;
+    private Vector3 networkPosition;
+    private Quaternion networkRotation;
     
     [Header("Building Capture Settings")]
     [Tooltip("건물 점령 가능 범위 (약 10미터)")]
@@ -31,37 +34,126 @@ public class MapController : MonoBehaviourPunCallbacks
     private Dictionary<Building, DrawingElement> buildingVisuals;
     private const string BUILDING_CAPTURE_EVENT = "BuildingCaptured";
 
+    void Awake()
+    {
+        // GameObject를 root로 만들기
+        // if (transform.parent != null)
+        // {
+        //     transform.SetParent(null);
+        // }
+        // // DontDestroyOnLoad(gameObject);
+
+        if (photonView == null)
+        {
+            Debug.LogError("PhotonView가 없습니다. MapController에 PhotonView 컴포넌트를 추가해주세요!");
+            return;
+        }
+
+        // 컴포넌트 참조 확인
+        if (map == null)
+        {
+            Debug.LogError("Map 컴포넌트가 할당되지 않았습니다!");
+            return;
+        }
+
+        // 카메라 참조 확인
+        if (mapCamera == null)
+        {
+            mapCamera = Camera.main;
+            if (mapCamera == null)
+            {
+                Debug.LogError("카메라를 찾을 수 없습니다!");
+                return;
+            }
+        }
+    }
+
     void Start()
     {
-        myLocation = new GeoPoint(0, 0);
+        Debug.Log($"MapController 시작 - 마스터 클라이언트: {PhotonNetwork.IsMasterClient}, 연결 상태: {PhotonNetwork.IsConnected}, 플레이어: {PhotonNetwork.LocalPlayer.NickName}");
 
-        // real
+        myLocation = new GeoPoint(0, 0);
         StartCoroutine(GetLocation());
+        StartCoroutine(ShareLocationRoutine());  // 위치 공유 코루틴 시작
 
         Input.compass.enabled = true;
-        myMarker = Marker2DManager.CreateItem(myLocation);
-        myMarker.texture = Resources.Load<Texture2D>("MarkerBlue");
-
+        
+        // 마커 초기화
+        InitializeMarkers();
+        
         StartCoroutine(MapInit());
 
-        // 모든 건물 초기화
         buildingVisuals = new Dictionary<Building, DrawingElement>();
         InitializeAllBuildings();
-
-        // UI 초기화
         InitializeUI();
 
-        // 위치 동기화 시작
-        if (PhotonNetwork.IsConnected)
+        Debug.Log("MapController 초기화 완료");
+    }
+
+    private void InitializeMarkers()
+    {
+        // 내 마커 초기화
+        myMarker = Marker2DManager.CreateItem(myLocation);
+        Sprite blueMarkerSprite = Resources.Load<Sprite>("MarkerBlue");
+        if (blueMarkerSprite != null)
         {
-            StartCoroutine(SyncLocation());
+            myMarker.texture = blueMarkerSprite.texture;
+            Debug.Log("내 마커 생성 완료");
+        }
+        else
+        {
+            Debug.LogError("MarkerBlue 스프라이트를 찾을 수 없습니다!");
         }
 
-        // Photon 연결 확인
-        if (!PhotonNetwork.IsConnected)
+        // 다른 플레이어 마커 초기화
+        foreach (Player player in PhotonNetwork.PlayerList)
         {
-            Debug.Log("Photon 서버에 연결되어 있지 않습니다. 싱글플레이어 모드로 실행됩니다.");
+            if (player.ActorNumber != PhotonNetwork.LocalPlayer.ActorNumber)
+            {
+                UpdateOtherPlayerMarker(player.NickName, myLocation.latitude, myLocation.longitude);
+                Debug.Log($"다른 플레이어 마커 초기화: {player.NickName}");
+            }
         }
+    }
+
+    public override void OnPlayerEnteredRoom(Player newPlayer)
+    {
+        Debug.Log($"플레이어 입장 감지: {newPlayer.NickName}");
+        if (newPlayer.ActorNumber != PhotonNetwork.LocalPlayer.ActorNumber)
+        {
+            UpdateOtherPlayerMarker(newPlayer.NickName, myLocation.latitude, myLocation.longitude);
+        }
+    }
+
+    private void OnEnable()
+    {
+        Debug.Log("MapController 활성화");
+        if (PhotonNetwork.InRoom)
+        {
+            foreach (Player player in PhotonNetwork.PlayerList)
+            {
+                if (player.ActorNumber != PhotonNetwork.LocalPlayer.ActorNumber)
+                {
+                    UpdateOtherPlayerMarker(player.NickName, myLocation.latitude, myLocation.longitude);
+                    Debug.Log($"기존 플레이어 마커 복원: {player.NickName}");
+                }
+            }
+        }
+    }
+
+    private void OnDisable()
+    {
+        Debug.Log("MapController 비활성화");
+        // 마커 정리
+        if (myMarker != null)
+        {
+            Marker2DManager.RemoveItem(myMarker);
+        }
+        foreach (var marker in otherPlayerMarkers.Values)
+        {
+            Marker2DManager.RemoveItem(marker);
+        }
+        otherPlayerMarkers.Clear();
     }
 
     void Update()
@@ -147,6 +239,7 @@ public class MapController : MonoBehaviourPunCallbacks
 
             if (currentBuilding.UpdateCapture(Time.deltaTime, isCapturing, PhotonNetwork.LocalPlayer.NickName))
             {
+                Debug.Log($"건물 점령 완료: {currentBuilding.GetName()}, 점령자: {PhotonNetwork.LocalPlayer.NickName}");
                 if (photonView != null)
                 {
                     photonView.RPC("OnBuildingCaptured", RpcTarget.All, currentBuilding.GetName(), PhotonNetwork.LocalPlayer.NickName);
@@ -175,12 +268,14 @@ public class MapController : MonoBehaviourPunCallbacks
     [PunRPC]
     void OnBuildingCaptured(string buildingName, string capturedByNickname)
     {
+        Debug.Log($"건물 점령 이벤트 수신: {buildingName}, 점령자: {capturedByNickname}");
         foreach (var building in buildingVisuals.Keys)
         {
             if (building.GetName() == buildingName)
             {
                 building.OnCaptureEventReceived(BuildingOwner.Player, capturedByNickname);
                 UpdateBuildingVisual(building);
+                Debug.Log($"건물 {buildingName}의 소유자가 {capturedByNickname}로 변경됨");
                 break;
             }
         }
@@ -188,13 +283,26 @@ public class MapController : MonoBehaviourPunCallbacks
 
     void UpdateBuildingVisual(Building building)
     {
-        Color color = building.GetOwner() switch
+        Color color;
+        if (building.GetOwner() == BuildingOwner.None)
         {
-            BuildingOwner.None => Color.gray,
-            BuildingOwner.Player => building.GetOwnerNickname() == PhotonNetwork.NickName ? Color.blue : Color.red,
-            BuildingOwner.Enemy => Color.red,
-            _ => Color.gray
-        };
+            color = Color.gray;
+            Debug.Log($"건물 {building.GetName()} - 소유자 없음, 회색으로 설정");
+        }
+        else
+        {
+            string ownerNickname = building.GetOwnerNickname();
+            if (ownerNickname == PhotonNetwork.LocalPlayer.NickName)
+            {
+                color = Color.blue;  // 내 건물
+                Debug.Log($"건물 {building.GetName()} - 내 소유, 파란색으로 설정");
+            }
+            else
+            {
+                color = Color.red;   // 상대방 건물
+                Debug.Log($"건물 {building.GetName()} - {ownerNickname} 소유, 빨간색으로 설정");
+            }
+        }
         
         DrawBuilding(building, color);
     }
@@ -407,62 +515,105 @@ public class MapController : MonoBehaviourPunCallbacks
         }
     }
 
-    IEnumerator SyncLocation()
+    public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
     {
-        while (true)
+        try
         {
-            if (PhotonNetwork.IsConnected)
-            {
-                photonView.RPC("UpdatePlayerLocation", RpcTarget.All, 
-                    PhotonNetwork.LocalPlayer.NickName,
-                    myLocation.longitude,
-                    myLocation.latitude);
-            }
-            yield return new WaitForSeconds(0.5f);
-        }
-    }
-
-    [PunRPC]
-    void UpdatePlayerLocation(string playerNickname, double longitude, double latitude)
-    {
-        if (playerNickname == PhotonNetwork.LocalPlayer.NickName)
-            return;
-
-        if (!otherPlayerMarkers.ContainsKey(playerNickname))
-        {
-            // 다른 플레이어의 마커 생성
-            Marker2D marker = Marker2DManager.CreateItem(new GeoPoint(longitude, latitude));
+            Debug.Log($"OnPhotonSerializeView - IsWriting: {stream.IsWriting}, IsMasterClient: {PhotonNetwork.IsMasterClient}, LocalPlayer: {PhotonNetwork.LocalPlayer.NickName}");
             
-            // Sprite를 로드하고 Texture2D로 변환
-            Sprite markerSprite = Resources.Load<Sprite>("MarkerRed");
-            if (markerSprite != null)
+            if (stream.IsWriting)
             {
-                marker.texture = markerSprite.texture;
+                // 내 위치 정보를 다른 플레이어에게 보내기
+                stream.SendNext(myLocation.latitude);
+                stream.SendNext(myLocation.longitude);
+                stream.SendNext(PhotonNetwork.LocalPlayer.NickName);
+                Debug.Log($"위치 정보 전송: {myLocation.latitude}, {myLocation.longitude}");
             }
             else
             {
-                Debug.LogError("MarkerRed 스프라이트를 찾을 수 없습니다!");
+                // 다른 플레이어의 위치 정보 받기
+                double latitude = (double)stream.ReceiveNext();
+                double longitude = (double)stream.ReceiveNext();
+                string senderNickname = (string)stream.ReceiveNext();
+                
+                if (senderNickname != PhotonNetwork.LocalPlayer.NickName)
+                {
+                    UpdateOtherPlayerMarker(senderNickname, latitude, longitude);
+                    Debug.Log($"다른 플레이어 위치 수신: {senderNickname} - {latitude}, {longitude}");
+                }
             }
-            
-            otherPlayerMarkers[playerNickname] = marker;
-            Debug.Log($"새로운 플레이어 마커 생성: {playerNickname}");
         }
-        else
+        catch (System.Exception e)
         {
-            // 기존 마커 위치 업데이트
-            otherPlayerMarkers[playerNickname].location = new GeoPoint(longitude, latitude);
+            Debug.LogError($"OnPhotonSerializeView 에러: {e.Message}");
+        }
+    }
+
+    private void UpdateOtherPlayerMarker(string playerNickname, double latitude, double longitude)
+    {
+        try
+        {
+            if (!otherPlayerMarkers.ContainsKey(playerNickname))
+            {
+                // 다른 플레이어의 마커 생성
+                Marker2D marker = Marker2DManager.CreateItem(new GeoPoint(longitude, latitude));
+                Sprite markerSprite = Resources.Load<Sprite>("MarkerRed");
+                if (markerSprite != null)
+                {
+                    marker.texture = markerSprite.texture;
+                    Debug.Log($"마커 생성 성공: {playerNickname}");
+                }
+                else
+                {
+                    Debug.LogError("MarkerRed 스프라이트를 찾을 수 없습니다!");
+                }
+                otherPlayerMarkers[playerNickname] = marker;
+            }
+            else
+            {
+                // 기존 마커 위치 업데이트
+                otherPlayerMarkers[playerNickname].location = new GeoPoint(longitude, latitude);
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"UpdateOtherPlayerMarker 에러: {e.Message}");
         }
     }
 
     public override void OnPlayerLeftRoom(Player otherPlayer)
     {
-        // 플레이어가 나가면 마커 제거
         if (otherPlayerMarkers.ContainsKey(otherPlayer.NickName))
         {
             Marker2D marker = otherPlayerMarkers[otherPlayer.NickName];
             Marker2DManager.RemoveItem(marker);
             otherPlayerMarkers.Remove(otherPlayer.NickName);
             Debug.Log($"플레이어 마커 제거: {otherPlayer.NickName}");
+        }
+    }
+
+    IEnumerator ShareLocationRoutine()
+    {
+        while (true)
+        {
+            if (photonView != null && PhotonNetwork.IsConnected)
+            {
+                Debug.Log($"위치 공유 시도 - IsMasterClient: {PhotonNetwork.IsMasterClient}, Player: {PhotonNetwork.LocalPlayer.NickName}, 위치: {myLocation.latitude}, {myLocation.longitude}");
+                photonView.RPC("ShareLocation", RpcTarget.All, myLocation.latitude, myLocation.longitude, PhotonNetwork.LocalPlayer.NickName);
+            }
+            yield return new WaitForSeconds(1f);  // 1초마다 위치 전송
+        }
+    }
+
+    [PunRPC]
+    void ShareLocation(double latitude, double longitude, string senderNickname)
+    {
+        Debug.Log($"RPC 수신 - From: {senderNickname}, To: {PhotonNetwork.LocalPlayer.NickName}, IsMaster: {PhotonNetwork.IsMasterClient}, 위치: {latitude}, {longitude}");
+        
+        if (senderNickname != PhotonNetwork.LocalPlayer.NickName)
+        {
+            UpdateOtherPlayerMarker(senderNickname, latitude, longitude);
+            Debug.Log($"다른 플레이어 마커 업데이트: {senderNickname} - {latitude}, {longitude}");
         }
     }
 }

@@ -1240,6 +1240,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   map: {fileID: 2045733281}
+  mapCamera: {fileID: 0}
   myLocation:
     x: 0
     y: 0
@@ -1264,8 +1265,9 @@ MonoBehaviour:
   prefixField: -1
   Synchronization: 3
   OwnershipTransfer: 0
-  observableSearch: 2
-  ObservedComponents: []
+  observableSearch: 0
+  ObservedComponents:
+  - {fileID: 2045733285}
   sceneViewId: 1
   InstantiationId: 0
   isRuntimeInstantiated: 0
